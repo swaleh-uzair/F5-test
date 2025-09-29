@@ -1,0 +1,43 @@
+---
+- name: F5 Pre-Check Failure Handler
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  
+  # Retrieve required variables if passed from the previous job or defined globally
+  vars:
+    # Set default values for variables expected from the failed job context
+    f5_target_host: "{{ inventory_hostname | default('UNKNOWN_HOST') }}"
+    f5_iso_file: "{{ iso_file | default('UNKNOWN_ISO') }}"
+
+  tasks:
+    - name: Log the pre-check failure to the job output
+      ansible.builtin.debug:
+        msg: |
+          =======================================================
+          F5 UPGRADE FAILURE INITIATED: PRE-CHECK FAILED
+          =======================================================
+          Host: {{ f5_target_host }}
+          ISO File: {{ f5_iso_file }}
+          Reason: The necessary pre-conditions (connectivity, file existence, disk space, or HA state) were not met.
+          Action Required: An administrator must manually investigate the F5 device and the Ansible environment.
+
+    - name: Send critical notification via mail
+      community.general.mail:
+        host: "smtp.example.com"
+        port: 587
+        username: "user@example.com"
+        password: "your_email_password" # Use a secure credential in AAP for this!
+        from: "ansible-automation@example.com"
+        to:
+          - "network-ops-alerts@example.com"
+        subject: "CRITICAL ALERT: F5 Upgrade Pre-Check Failed on {{ f5_target_host }}"
+        body: |
+          The F5 upgrade pre-check job (ID: {{ tower_job_id }}) failed on host {{ f5_target_host }}.
+          
+          The upgrade was ABORTED to prevent configuration damage.
+          
+          Failure Details:
+          - Check the AAP job logs for specific error messages (e.g., missing ISO file, no SSH, inactive F5).
+          - Do not proceed with the upgrade manually until the pre-conditions are resolved.
+      delegate_to: localhost
