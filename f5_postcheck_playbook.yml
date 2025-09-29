@@ -1,0 +1,34 @@
+---
+- name: F5 Software Upgrade Post-Check
+  hosts: your_f5_devices
+  connection: local
+  gather_facts: no
+  vars_files:
+    - vars/f5_upgrade_vars.yml
+
+  vars:
+    post_check_success: false
+    
+  tasks:
+    - name: Wait for F5 to become reachable again
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Post-check - Verify new boot location
+      f5networks.f5_modules.bigip_facts:
+      register: new_facts
+
+    - name: Set post_check_success to true if new boot location is correct
+      set_fact:
+        post_check_success: true
+      when: new_facts.ansible_facts.f5_active_volume == boot_location
+
+    - name: Generate Upgrade Report
+      debug:
+        msg: |
+          "F5 Upgrade Post-Check Report for {{ inventory_hostname }}:
+          ------------------------------------------
+          Target Boot Location: {{ boot_location }}
+          Current Active Boot Location: {{ new_facts.ansible_facts.f5_active_volume }}
+          Post-Check Status: {{ 'SUCCESS' if post_check_success else 'FAILURE' }}"
