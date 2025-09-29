@@ -1,0 +1,45 @@
+---
+- name: F5 Software Upgrade Pre-Check
+  hosts: your_f5_devices
+  connection: local
+  gather_facts: no
+  vars_files:
+    - vars/f5_upgrade_vars.yml
+
+  tasks:
+    - name: Verify SSH connectivity to F5 device
+      wait_for:
+        port: 22
+        timeout: 30
+        host: "{{ inventory_hostname }}"
+        state: started
+
+    - name: Get F5 facts and save initial boot location
+      f5networks.f5_modules.bigip_facts:
+      register: initial_facts
+    
+    - name: Set fact for initial boot location
+      set_fact:
+        initial_boot_location: "{{ initial_facts.ansible_facts.f5_active_volume }}"
+
+    - name: Check if there is enough disk space for the upgrade
+      f5networks.f5_modules.bigip_command:
+        commands:
+          - "tmsh show sys disk application-volume"
+      register: disk_space_check
+
+    - name: Check if the ISO file already exists on the F5
+      f5networks.f5_modules.bigip_software_image:
+        image: "{{ iso_file }}"
+        src: ""
+      register: iso_check
+      failed_when: False
+
+    - name: Print pre-check results
+      debug:
+        msg: |
+          "F5 Pre-Check Report for {{ inventory_hostname }}:
+          ------------------------------------------
+          Current Active Boot Location: {{ initial_boot_location }}
+          ISO File on F5: {{ iso_file }} exists: {{ iso_check.exists }}
+          Disk Space Check Result: {{ disk_space_check.stdout_lines[0] }}"
