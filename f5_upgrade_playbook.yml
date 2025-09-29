@@ -1,0 +1,77 @@
+---
+- name: F5 Software Upgrade Playbook
+  hosts: your_f5_devices
+  connection: local
+  gather_facts: no
+
+  # Use vars_files to load variables for credentials and upgrade details
+  vars_files:
+    - vars/f5_upgrade_vars.yml
+
+  vars:
+    ansible_network_os: "f5.bigip.bigip"
+    upgrade_success: false
+
+  tasks:
+    - name: Pre-check - Save current boot location
+      f5networks.f5_modules.bigip_facts:
+      register: initial_facts
+      run_once: true
+
+    - name: Store initial boot location
+      set_fact:
+        initial_boot_location: "{{ initial_facts.ansible_facts.f5_active_volume }}"
+
+    - name: Ensure ISO file exists on the Ansible control node
+      stat:
+        path: "/path/to/your/iso/{{ iso_file }}"
+      register: iso_stat_result
+      delegate_to: localhost
+      run_once: yes
+      failed_when: not iso_stat_result.stat.exists
+
+    - name: Upload ISO file to F5
+      f5networks.f5_modules.bigip_software_image:
+        image: "{{ iso_file }}"
+        src: "/path/to/your/iso/{{ iso_file }}"
+      register: upload_result
+
+    - name: Install ISO image to specified boot location
+      f5networks.f5_modules.bigip_software_install:
+        image: "{{ iso_file }}"
+        volume: "{{ boot_location }}"
+      register: install_result
+
+    - name: Reboot F5 into the new boot location
+      f5networks.f5_modules.bigip_command:
+        commands:
+          - "run util tmsh install ltm image {{ iso_file }} boot-location {{ boot_location }}"
+          - "reboot"
+      when: install_result.changed
+
+    - name: Wait for F5 to become reachable again
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Post-check - Verify new boot location
+      f5networks.f5_modules.bigip_facts:
+      register: new_facts
+
+    - name: Set upgrade_success to true if new boot location is correct
+      set_fact:
+        upgrade_success: true
+      when: new_facts.ansible_facts.f5_active_volume == boot_location
+
+    - name: Generate Upgrade Report
+      debug:
+        msg: |
+          "F5 Upgrade Report for {{ inventory_hostname }}:
+          ------------------------------------------
+          Original Boot Location: {{ initial_boot_location }}
+          Target Boot Location: {{ boot_location }}
+          ISO File Used: {{ iso_file }}
+          Upgrade Status: {{ 'SUCCESS' if upgrade_success else 'FAILURE' }}
+          Current Active Boot Location: {{ new_facts.ansible_facts.f5_active_volume if new_facts is defined else 'Unknown' }}
+          "
+      run_once: true
