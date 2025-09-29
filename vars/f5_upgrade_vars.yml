@@ -1,0 +1,4 @@
+# vars/f5_upgrade_vars.yml
+---
+iso_file: "BIGIP-17.1.0.3-0.0.8.iso"
+boot_location: "HD1.2"
